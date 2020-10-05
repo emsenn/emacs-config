@@ -1,0 +1,230 @@
+#+title: emsenn's emacs stuff
+* Procedures
+  :PROPERTIES:
+  :header-args: :noweb yes :padline yes :mkdirp yes
+  :END:
+** Alex's package installer
+#+name: alexs-package-install-procedure
+#+begin_src elisp
+  (defun asc:package-install (pkg)
+    "Install package.
+  If we're getting an error saying that the package is unavailable,
+  we'll refresh package content and try again. If we don't do this,
+  then the system will never work on a fresh install because the
+  actual package contents are missing and thus `package-install'
+  will never find anything."
+    (when (fboundp 'package-install)
+      (condition-case err
+	  (or (package-installed-p pkg)
+	      (package-install pkg))
+	((error "message" format-args)
+	 (package-refresh-contents)
+	 (package-install pkg)))))
+#+end_src
+* Complete Files
+  :PROPERTIES:
+  :header-args: :noweb yes :padline yes :mkdirp yes
+  :END:
+** init.el
+#+begin_src elisp :tangle ~/.emacs.d/init.el
+  ;; this is ripped off from alex schroeder
+  ;; https://alexschroeder.ch
+  (defvar ems/emacs-dir "~/.emacs.d/"
+    "The directory where *-init.el files are.")
+
+  (defvar ems/splashes
+    '("You don't know how exciting it is to have gotten this assignment."
+      "I think it will be simpler if I change my uniform."))
+
+  (add-to-list 'load-path
+	       (expand-file-name "lib" ems/emacs-dir))
+
+  (dolist (file (directory-files (concat ems/emacs-dir
+					 "/config")
+				 t "-conf\\.el\\'"))
+    (load-file file))
+    (setq make-backup-files nil)
+  (setq initial-scratch-message
+	(concat ";; " (seq-random-elt ems/splashes) "\n"))
+#+end_src
+** config/
+*** 00-packages-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/00-packages-conf.el
+  (when (require 'package nil t)
+    (setq package-archives '(("gnu" . "https://elpa.gnu.org/packages/")
+			     ("melpa" . "https://melpa.org/packages/")))
+    (when (< emacs-major-version 27)
+      (package-initialize)))
+
+  (when (fboundp 'package-install)
+    (condition-case err
+	(or (package-installed-p 'use-package)
+	    (package-install 'use-package)) ;; clever, alex
+      ((error "message" format-args)
+       (package-refresh-contents)
+       (pacakge-install 'use-package))))
+
+  <<alexs-package-install-procedure>>
+#+end_src
+*** theme-conf.el
+#+name: theme-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/theme-conf.el
+
+(asc:package-install 'tao-theme)
+
+(require 'olivetti)
+
+(load-theme 'tao-yin t)
+
+(olivetti-mode t)
+(yafolding-mode t)
+#+end_src
+*** look-and-feel-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/globalized-minor-mode-conf.el
+
+    (asc:package-install 'olivetti)
+    (asc:package-install 'centered-cursor-mode)
+
+    (setq echo-keystrokes 0.1)
+    (setq inhibit-startup-message t)
+    (menu-bar-mode -1)
+    (tool-bar-mode -1)
+    (show-paren-mode 1)
+    (setq fill-column 68)
+    (setq mouse-wheel-scroll-amount '(1 ((shift) .1)))
+    (setq line-number-mode t)
+    (setq column-number-mode t)
+    (setq-default truncate-lines t)
+    (setq-default line-spacing 1)
+    (setq sentence-end-double-space nil)
+
+    (when (fboundp 'windmove-default-keybindings)
+      (windmove-default-keybindings))
+
+
+    (define-globalized-minor-mode ems/global-olivetti-mode
+      olivetti-mode
+      (lambda ()
+	(when (not (memq major-mode
+			 (list 'dired-mode)))
+	  (olivetti-mode t))))
+
+    (define-global-minor-mode ems/global-centered-cursor-mode
+      centered-cursor-mode
+      (lambda ()
+	(when (not (memq major-mode
+			 (list 'Info-mode
+			       'term-mode
+			       'eshell-mode
+			       'racket-repl-mode
+			       'shell-mode
+			       'erc-mode)))
+	  (centered-cursor-mode))))
+
+    (ems/global-centered-cursor-mode 1)
+    (ems/global-olivetti-mode 1)
+
+#+end_src
+*** file-handling-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/file-handling-conf.el
+(add-hook 'before-save-hook 'delete-trailing-whitespace)
+#+end_src
+*** mastodon-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/mastodon-conf.el
+(setq mastodon-instance-url "https://ecosteader.com")
+#+end_src
+*** rcirc-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/rcirc-conf.el
+(asc:package-install 'rcirc)
+
+(require 'rcirc)
+
+(defun rcirc-handler-301 (process cmd sender args)
+  "/away message handler.")
+
+(add-hook 'rcirc-mode-hook
+	  (lambda ()
+	    (set (make-local-variable 'scroll-conservatively)
+		 8192)))
+
+(setq rcirc-time-format "%Y-%m-%d %H:%M ")
+
+(setq rcirc-default-nick "emsenn")
+(setq rcirc-default-user-name "emsenn")
+(setq rcirc-default-full-name "emsenn")
+
+(setq rcirc-server-alist
+      '(("irc.freenode.net" :channels ("qtmud"))))
+
+(rcirc-connect "irc.freenode.net")
+#+end_src
+*** org-mode-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/org-mode-conf.el
+
+(require 'ox-hugo)
+
+(global-set-key (kbd "C-c l") 'org-store-link)
+(global-set-key (kbd "C-c a") 'org-agenda)
+(global-set-key (kbd "C-c c") 'org-capture)
+(global-set-key (kbd "C-c C-,") 'org-insert-structure-template)
+
+(defun ems-org-datetime-to-hyphenated (datetime) "Turns a org datetime to hyphenated str"
+       (concat (substring datetime 1 11) "-" (substring datetime 16 18) "-" (substring datetime 19 21)))
+
+  (setq org-capture-templates
+	'(("i" "New Image Entry" plain (file+olp+datetree
+					"~/imgs/images.org" "Images")
+	   "***** %^{DATE}-%^{ID}\n      :PROPERTIES:\n      :EXPORT_FILE_NAME: %\\2\n      :CUSTOM_ID: %\\1-%\\2\n      :END:\n#+name: img:%\\1-%\\2\n#+caption: %? %^{MEDIUM} by %^{CREATOR}, %\\1.\n[[./imgs/%\\1-%\\2.jpg]]")
+	  ("p" "Capture personal entry")
+	  ("pb" "Capture new personal bulletin" entry (file+olp+datetree
+						       "~/org/self/self.org" "Bulletins")
+	   "* %^{PROMPT}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %^{SLUG}\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TYPE: bulletin\n     :END:\n%?\n")
+	  ("pl" "Capture new personal log" entry (file+olp+datetree
+						  "~/org/self/self.org" "Logs")
+	   "* %U\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %(ems-org-datetime-to-hyphenated (org-insert-time-stamp (current-time) t))\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TYPE: log\n     :END:\n%?\n")
+	  ("m" "Capture MUD entry")
+	  ("mr" "Capture Racket-MUD entry")
+	  ("mrb" "Capture new Racket-MUD bulletin" entry (file+olp+datetree
+						       "~/org/racket-mud/racket-mud.org" "Bulletins")
+	   "* %^{PROMPT}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %^{SLUG}\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Racket-MUD\"\n     :EXPORT_HUGO_TYPE: bulletin\n     :END:\n%?\n")
+	  ("mrl" "Capture new Racket-MUD log" entry (file+olp+datetree
+						  "~/org/racket-mud/racket-mud.org" "Logs")
+	   "* %U\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %(ems-org-datetime-to-hyphenated (org-insert-time-stamp (current-time) t))\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Racket-MUD\"\n     :EXPORT_HUGO_TYPE: log\n     :END:\n%?\n")
+	  ("mrp" "Capture new Racket-MUD procedure" entry (file+olp
+						  "~/org/racket-mud/racket-mud.org" "Procedures")
+	   "* %^{NAME}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %\\1\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Racket-MUD\"\n     :EXPORT_HUGO_TYPE: procedure\n    :EXPORT_HUGO_CUSTOM_FRONT_MATTER: :description \"%^{DESCRIPTION}\"\n     :END:\n#+name: %\\1-procedure\n#+caption: %\\2\n#+begin_src racket :noweb no-export\n%?\n#+end_src\n")
+	  ("mb" "Capture Basic Racket-MUD Library")
+	  ("mbb" "Capture new Basic Racket-MUD Library bulletin" entry (file+olp+datetree
+						       "~/org/basic-racket-mud-library/basic-racket-mud-library.org" "Bulletins")
+	   "* %^{PROMPT}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %^{SLUG}\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Basic Racket-MUD Library\"\n     :EXPORT_HUGO_TYPE: bulletin\n     :END:\n%?\n")
+	  ("mbl" "Capture new Basic Racket-MUD Library log" entry (file+olp+datetree
+						  "~/org/basic-racket-mud-library/basic-racket-mud-library.org" "Logs")
+	   "* %U\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %(ems-org-datetime-to-hyphenated (org-insert-time-stamp (current-time) t))\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Basic Racket-MUD Library\"\n     :EXPORT_HUGO_TYPE: log\n     :END:\n%?\n")
+	  ("mR" "Capture Basic Racket-MUD RPG Library entry")
+	  ("mRb" "Capture new Basic Racket-MUD RPG Library bulletin" entry (file+olp+datetree
+						       "~/org/basic-racket-mud-rpg-library/basic-racket-mud-rpg-library.org" "Bulletins")
+	   "* %^{PROMPT}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %^{SLUG}\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Basic Racket-MUD RPG Library\"\n     :EXPORT_HUGO_TYPE: bulletin\n     :END:\n%?\n")
+	  ("mRl" "Capture new Basic Racket-MUD RPG Library log" entry (file+olp+datetree
+						  "~/org/basic-racket-mud-rpg-library/basic-racket-mud-rpg-library.org" "Logs")
+	   "* %U\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %(ems-org-datetime-to-hyphenated (org-insert-time-stamp (current-time) t))\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Basic Racket-MUD RPG Library\"\n     :EXPORT_HUGO_TYPE: log\n     :END:\n%?\n")
+	  ("mt" "Capture Teraum-MUD entry")
+	  ("mtb" "Capture new Teraum-MUD bulletin" entry (file+olp+datetree
+						       "~/org/teraum-mud/teraum-mud.org" "Bulletins")
+	   "* %^{PROMPT}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %^{SLUG}\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Teraum-MUD\"\n     :EXPORT_HUGO_TYPE: bulletin\n     :END:\n%?\n")
+	  ("mtl" "Capture new Teraum-MUD log" entry (file+olp+datetree
+						  "~/org/teraum-mud/teraum-mud.org" "Logs")
+	   "* %U\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %(ems-org-datetime-to-hyphenated (org-insert-time-stamp (current-time) t))\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Teraum-MUD\"\n     :EXPORT_HUGO_TYPE: log\n     :END:\n%?\n")
+	  ("t" "Capture Teraum entry")
+	  ("tb" "Capture new Teraum bulletin" entry (file+olp+datetree
+						       "~/org/teraum/teraum.org" "Bulletins")
+	   "* %^{PROMPT}\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %^{SLUG}\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Teraum\"\n     :EXPORT_HUGO_TYPE: bulletin\n     :END:\n%?\n")
+	  ("tl" "Capture new Teraum log" entry (file+olp+datetree
+						  "~/org/teraum/teraum.org" "Logs")
+	   "* %U\n     :PROPERTIES:\n     :EXPORT_FILE_NAME: %(ems-org-datetime-to-hyphenated (org-insert-time-stamp (current-time) t))\n     :EXPORT_DATE: %U\n     :EXPORT_HUGO_TAGS: \"Teraum\"\n     :EXPORT_HUGO_TYPE: log\n     :END:\n%?\n")))
+#+end_src
+*** racket-mode-conf.el
+#+begin_src elisp :tangle ~/.emacs.d/config/racket-mode-conf.el
+(asc:package-install 'racket-mode)
+(asc:package-install 'scribble-mode)
+
+#+end_src
